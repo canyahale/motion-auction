@@ -24,9 +24,9 @@ const MAX_SNAPS = 4;
 const MAX_SEASONS = 5;
 
 const RIVAL_DEFS = [
-  { id: 'mara', name: 'Mara', style: 'Aggressive', color: '#ff5c8a', purse: 1000, maxFactor: 1.0,  bidProb: 0.60 },
-  { id: 'bram', name: 'Bram', style: 'Cautious',  color: '#7cc7ff', purse: 1000, maxFactor: 0.70, bidProb: 0.40 },
-  { id: 'pip',  name: 'Pip',  style: 'Broke',     color: '#ffd166', purse: 600,  maxFactor: 0.55, bidProb: 0.30 },
+  { id: 'mara', name: 'Mara', style: 'Aggressive', color: '#ff5c8a', purse: 1000, maxFactor: 1.8,  bidProb: 0.60 },
+  { id: 'bram', name: 'Bram', style: 'Cautious',  color: '#7cc7ff', purse: 1000, maxFactor: 1.5, bidProb: 0.40 },
+  { id: 'pip',  name: 'Pip',  style: 'Broke',     color: '#ffd166', purse: 600,  maxFactor: 1.35, bidProb: 0.45 },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -300,11 +300,17 @@ function rivalAct(r, now) {
   const maxWilling = Math.min(valueFor(state.lot) * r.maxFactor, r.purseLeft);
   const nextBid = state.currentBid + (Math.random() < 0.5 ? 10 : 25);
   if (state.leader === r.id) { r.nextAct = now + 1500 + Math.random() * 2500; return; }
-  if (nextBid > maxWilling || Math.random() > r.bidProb) {
+  if (nextBid > maxWilling) {
+    // Priced out for this lot — out for good.
     r.passed = true;
     r.status = 'passed';
     r.nextAct = Infinity;
     renderRivals();
+    return;
+  }
+  if (Math.random() > r.bidProb) {
+    // Sitting this round out — try again shortly, don't pass.
+    r.nextAct = now + 1200 + Math.random() * 2000;
     return;
   }
   placeBid(r.id, nextBid);
