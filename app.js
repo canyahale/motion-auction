@@ -9,7 +9,7 @@
 const API_URL = 'https://leaderboard.motion.game/api/leaderboard';
 const FALLBACK_URL = 'leaderboard.json';
 const PFP_BASE = 'https://leaderboard.motion.game/pfp/'; // Motion's own profile photos, one per creator id
-const GAME_URL = 'https://canyahale.github.io/motion-auction/'; // GitHub Pages URL for canyahale/motion-auction
+const GAME_URL = 'https://motion-auction.vercel.app/'; // live Vercel URL
 
 const START_COINS = 1000;
 const LINEUP_SIZE = 5;
