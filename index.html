@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Motion Auction — bid on creators, build your lineup</title>
+<meta name="description" content="A Mogathon mini-game: bid on real Motion leaderboard creators against AI rivals, build a 5-creator lineup, and score on their real rank moves. No blockchain, no accounts.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff2e88'/%3E%3Ctext x='32' y='44' font-size='36' font-family='Arial' font-weight='bold' text-anchor='middle' fill='white'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>MOTION <span>AUCTION</span></h1>
+    <p class="tagline">Bid on real creators. Build your lineup. Score on their real moves.</p>
+    <p id="dataBadge" class="data-badge">Loading leaderboard…</p>
+  </header>
+
+  <!-- ============ LOADING ============ -->
+  <section id="screenLoading" class="screen">
+    <p class="loading-text">Fetching the live Motion leaderboard…</p>
+  </section>
+
+  <!-- ============ AUCTION ============ -->
+  <section id="screenAuction" class="screen hidden">
+    <div class="stat-bar">
+      <div class="stat"><span class="stat-label">Coins</span><span id="statCoins" class="stat-value">1,000</span></div>
+      <div class="stat"><span class="stat-label">Lineup</span><span id="statLineup" class="stat-value">0/5</span></div>
+      <div class="stat"><span class="stat-label">Best score</span><span id="statBest" class="stat-value">—</span></div>
+      <div class="stat"><span class="stat-label">Lot</span><span id="statLot" class="stat-value">1/20</span></div>
+    </div>
+
+    <div class="timer-wrap">
+      <div id="timerBar" class="timer-bar"></div>
+      <span id="timerText" class="timer-text">15s</span>
+    </div>
+
+    <div id="lotCard" class="lot-card">
+      <div id="lotAvatar"></div>
+      <div class="lot-rank" id="lotRank">#1</div>
+      <div class="lot-main">
+        <div id="lotName" class="lot-name">—</div>
+        <div id="lotDelta" class="lot-delta">—</div>
+      </div>
+      <div class="lot-prices">
+        <div><span class="price-label">Opens at</span><span id="lotStart" class="price-value">—</span></div>
+        <div><span class="price-label">Current bid</span><span id="lotBid" class="price-value">—</span></div>
+        <div><span class="price-label">Leading</span><span id="lotLeader" class="price-value">—</span></div>
+      </div>
+    </div>
+
+    <div class="bid-row">
+      <button id="bid10" class="bid-btn">+10</button>
+      <button id="bid25" class="bid-btn">+25</button>
+      <button id="bid50" class="bid-btn">+50</button>
+      <button id="skipBtn" class="skip-btn">Skip lot</button>
+    </div>
+    <p id="bidHint" class="bid-hint"></p>
+
+    <div id="rivals" class="rivals"></div>
+
+    <div class="lineup">
+      <h2>Your lineup</h2>
+      <div id="lineupSlots" class="lineup-slots"></div>
+    </div>
+
+    <div class="log">
+      <h2>Auction floor</h2>
+      <ul id="logList"></ul>
+    </div>
+  </section>
+
+  <!-- ============ SCORING ============ -->
+  <section id="screenScoring" class="screen hidden">
+    <h2 class="screen-title">Season scored</h2>
+    <p id="scoringNote" class="muted"></p>
+    <table class="score-table">
+      <thead><tr><th>Creator</th><th>Rank</th><th>Move</th><th>Points</th></tr></thead>
+      <tbody id="scoreRows"></tbody>
+      <tfoot><tr><td colspan="3">Total</td><td id="scoreTotal">0</td></tr></tfoot>
+    </table>
+    <p id="bestLine" class="best-line"></p>
+    <div class="actions">
+      <button id="shareBtn" class="share-btn">Share my score on X</button>
+      <button id="againBtn" class="again-btn">Play another season</button>
+    </div>
+    <p class="muted small">Scored on the leaderboard moves in the data above — climbs earn points, falls lose them, the biggest climber in your lineup earns a +50 bonus.</p>
+  </section>
+
+  <footer>
+    <p>Mogathon entry · Built on Motion's public leaderboard · No blockchain, no accounts, no sign-up.</p>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
