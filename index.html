@@ -71,6 +71,23 @@
     </div>
   </section>
 
+  <!-- ============ CAPTAIN ============ -->
+  <section id="screenCaptain" class="screen hidden">
+    <h2 class="screen-title">Pick your Captain</h2>
+    <p class="muted">Your Captain's points are doubled. Tap a creator, then confirm.</p>
+    <div id="captainList" class="pick-list"></div>
+    <div class="actions"><button id="captainConfirm" class="share-btn">Set Captain</button></div>
+  </section>
+
+  <!-- ============ CALL THE CLIMBER ============ -->
+  <section id="screenCall" class="screen hidden">
+    <h2 class="screen-title">Call the climber</h2>
+    <p id="callNote" class="muted"></p>
+    <input id="callFilter" class="filter-input" type="search" placeholder="Search creators…" autocomplete="off">
+    <div id="callList" class="pick-list scroll"></div>
+    <div class="actions"><button id="callConfirm" class="share-btn">Lock my Call</button></div>
+  </section>
+
   <!-- ============ SCORING ============ -->
   <section id="screenScoring" class="screen hidden">
     <h2 class="screen-title">Season scored</h2>
@@ -81,11 +98,13 @@
       <tfoot><tr><td colspan="3">Total</td><td id="scoreTotal">0</td></tr></tfoot>
     </table>
     <p id="bestLine" class="best-line"></p>
+    <div id="callBlock" class="call-block"></div>
+    <div id="seasonHistory" class="history"></div>
     <div class="actions">
       <button id="shareBtn" class="share-btn">Share my score on X</button>
       <button id="againBtn" class="again-btn">Play another season</button>
     </div>
-    <p class="muted small">Scored on the leaderboard moves in the data above — climbs earn points, falls lose them, the biggest climber in your lineup earns a +50 bonus.</p>
+    <p class="muted small">Scored on your lineup's momentum — rank climbs earn 10 points per spot, falls lose 10, top ranks add a bonus, the biggest climber earns +50, and your Captain's points are doubled. Your Call is a prediction about the NEXT hourly snapshot, never the one you drafted on.</p>
   </section>
 
   <footer>

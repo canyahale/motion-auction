@@ -17,12 +17,22 @@ Static HTML/CSS/JS; works from any static host (e.g. GitHub Pages).
    (cautious) and Pip (broke). Each lot runs on a 15-second timer; a bid in
    the last 5 seconds resets the clock to 5 seconds. Highest bid wins the
    creator into your lineup.
-4. Fill your **5-creator lineup** (or run out of lots) and the season is
-   scored: each creator earns **10 points per rank climbed** and loses 10
-   per rank fallen, plus a rank bonus (top 10: +20, top 30: +10). The
-   biggest climber in your lineup earns a **+50 bonus**.
-5. Your best score is saved on your device. Hit **Share my score on X** to
-   post it and tag @callmogbot — that's the Mogathon entry.
+4. Fill your **5-creator lineup** (or run out of lots), then **pick a
+   Captain** from your lineup — the Captain's points are doubled (×2).
+5. **Call the climber** — pick ONE creator from the whole board you think
+   will climb most by the NEXT hourly update. +100 if they climb, +200 if
+   they are the biggest climber, 0 if they fall or stay flat. The Call
+   resolves when a newer snapshot arrives on a later visit — never against
+   the snapshot you made it on — and its points go into a separate
+   lifetime Call bank.
+6. Your lineup is scored on **momentum**: 10 points per rank spot moved
+   across the snapshots the game has seen (oldest stored snapshot to now;
+   with only one snapshot seen it scores on the latest moves and says so),
+   plus a rank bonus (top 10: +20, top 30: +10). The biggest climber in
+   your lineup earns a **+50 bonus**.
+7. Your best score is saved on your device, and the last 5 seasons are
+   listed on the results screen. Hit **Share my score on X** to post it
+   and tag @callmogbot — that's the Mogathon entry.
 
 ## Data
 
@@ -31,6 +41,15 @@ Static HTML/CSS/JS; works from any static host (e.g. GitHub Pages).
   `Access-Control-Allow-Origin: *`, so the browser can call it directly).
 - **Fallback:** if the live fetch fails, the game uses the bundled snapshot
   `leaderboard.json` (captured 2026-11-20 16:00 UTC) and says so in the UI.
+- **Momentum:** Motion's API exposes no history (probed 2026-11-20:
+  `/api/leaderboard/history` is 404, `?hours=`/`?since=` are ignored, and
+  the leaderboard page itself fetches only `/api/leaderboard`). So the
+  game remembers the snapshots it has actually fetched on your device
+  (last 4) and scores momentum across them. Until it has seen two
+  snapshots it scores on the latest moves and says so. No history is
+  ever invented.
+- **The Call** is a prediction about a future snapshot: it only resolves
+  when a strictly newer snapshot is fetched on a later visit.
 - The data badge at the top always shows whether the data is live or a
   snapshot, and the snapshot time. Creator names, ranks and moves are
   never invented — they come from that data only.

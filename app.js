@@ -16,6 +16,12 @@ const LINEUP_SIZE = 5;
 const LOTS_PER_SEASON = 20;
 const LOT_SECONDS = 15;
 const BEST_KEY = 'motion-auction-best';
+const CALL_KEY = 'motion-auction-call';         // one pending/resolved Call
+const CALL_BANK_KEY = 'motion-auction-call-bank'; // lifetime points from resolved Calls
+const SEASONS_KEY = 'motion-auction-seasons';   // last 5 season scores
+const SNAPS_KEY = 'motion-auction-snapshots';   // last 4 fetched snapshots (momentum window)
+const MAX_SNAPS = 4;
+const MAX_SEASONS = 5;
 
 const RIVAL_DEFS = [
   { id: 'mara', name: 'Mara', style: 'Aggressive', color: '#ff5c8a', purse: 1000, maxFactor: 1.0,  bidProb: 0.60 },
@@ -43,6 +49,12 @@ const state = {
   timer: null,
   score: null,
   best: null,
+  captainId: null,   // lineup creator id whose points are doubled
+  callPick: null,    // creator id picked on the Call screen this season
+  call: null,        // stored Call object (pending or resolved)
+  callBank: 0,       // lifetime points from resolved Calls
+  callResolvedThisBoot: null,
+  seasons: [],       // last 5 season scores
 };
 
 /* ---------------- data ---------------- */
@@ -68,6 +80,104 @@ function fmtAsOf(iso) {
   if (!iso) return 'unknown time';
   const d = new Date(iso);
   return d.toUTCString().replace('GMT', 'UTC');
+}
+
+/* ---------------- momentum window ---------------- */
+
+// The API exposes no history (GET /api/leaderboard/history is 404, and
+// ?hours=/?since= are ignored). So the game builds its own window from
+// snapshots it has actually fetched, stored in localStorage. Momentum is
+// the creator's rank change from the OLDEST stored snapshot to the current
+// one. With fewer than 2 stored snapshots, momentum falls back to the
+// API's own delta (the move vs its ~4h baseline). Nothing is ever
+// invented: if we have not seen it, we do not score it.
+function loadSnaps() {
+  try { return JSON.parse(localStorage.getItem(SNAPS_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function storeSnapshot(rows, asOf) {
+  if (!asOf) return loadSnaps();
+  const snaps = loadSnaps();
+  if (snaps.some((s) => s.asOf === asOf)) return snaps; // already stored
+  const pos = {};
+  for (const r of rows) pos[r.id] = r.position;
+  snaps.push({ asOf, pos });
+  while (snaps.length > MAX_SNAPS) snaps.shift();
+  try { localStorage.setItem(SNAPS_KEY, JSON.stringify(snaps)); } catch (e) { /* private mode */ }
+  return snaps;
+}
+
+function oldestSnap(snaps) {
+  let oldest = null;
+  for (const s of snaps) if (!oldest || s.asOf < oldest.asOf) oldest = s;
+  return oldest;
+}
+
+function momentumFor(c, snaps) {
+  if (snaps.length >= 2) {
+    const oldest = oldestSnap(snaps);
+    if (oldest && oldest.pos[c.id] != null) return oldest.pos[c.id] - c.position;
+  }
+  return c.delta || 0;
+}
+
+/* ---------------- the Call (prediction) ---------------- */
+
+function loadCall() {
+  try { const raw = localStorage.getItem(CALL_KEY); return raw ? JSON.parse(raw) : null; }
+  catch (e) { return null; }
+}
+
+function saveCall(call) {
+  try { localStorage.setItem(CALL_KEY, JSON.stringify(call)); } catch (e) { /* private mode */ }
+}
+
+function loadCallBank() {
+  try { return parseInt(localStorage.getItem(CALL_BANK_KEY) || '0', 10) || 0; }
+  catch (e) { return 0; }
+}
+
+function addCallBank(pts) {
+  const v = loadCallBank() + pts;
+  try { localStorage.setItem(CALL_BANK_KEY, String(v)); } catch (e) { /* private mode */ }
+  return v;
+}
+
+// Resolve a pending Call against a NEWER snapshot. Returns null when the
+// snapshot is not newer than the one the Call was made against — a Call is
+// a prediction about the future, never scored against its own snapshot.
+function resolveCall(call, rows, asOf) {
+  if (!call || call.resolved) return null;
+  if (!asOf || asOf <= call.asOf) return null;
+  const row = rows.find((r) => r.id === call.creatorId);
+  if (!row) return { resolved: true, pts: 0, note: `${call.name} left the board — no points.` };
+  const climb = call.positionAtCall - row.position;
+  let biggest = null;
+  for (const r of rows) {
+    const d = r.delta || 0;
+    if (d > 0 && (!biggest || d > biggest.delta)) biggest = r;
+  }
+  if (biggest && biggest.id === call.creatorId) {
+    return { resolved: true, pts: 200, note: `${call.name} was the biggest climber (+${biggest.delta}) — +200!` };
+  }
+  if (climb > 0) return { resolved: true, pts: 100, note: `${call.name} climbed ${climb} spot${climb === 1 ? '' : 's'} — +100.` };
+  return { resolved: true, pts: 0, note: `${call.name} did not climb — no points.` };
+}
+
+/* ---------------- season history ---------------- */
+
+function loadSeasons() {
+  try { return JSON.parse(localStorage.getItem(SEASONS_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function saveSeason(entry) {
+  const list = loadSeasons();
+  list.unshift(entry);
+  while (list.length > MAX_SEASONS) list.pop();
+  try { localStorage.setItem(SEASONS_KEY, JSON.stringify(list)); } catch (e) { /* private mode */ }
+  return list;
 }
 
 /* ---------------- pricing ---------------- */
@@ -142,6 +252,9 @@ function newSeason() {
   state.deck = shuffle(state.creators.slice()).slice(0, LOTS_PER_SEASON);
   state.lotIndex = 0;
   state.score = null;
+  state.captainId = null;
+  state.callPick = null;
+  state.callResolvedThisBoot = null;
   $('logList').innerHTML = '';
   log('<b>New season.</b> 1,000 coins, 20 lots, fill your 5-creator lineup.');
   showScreen('screenAuction');
@@ -254,20 +367,107 @@ function resolveLot() {
 
 function endSeason() {
   clearInterval(state.timer);
+  if (!state.lineup.length) {
+    // Empty lineup: nothing to captain or call — score it as-is.
+    state.captainId = null;
+    state.callPick = null;
+    doScore();
+    return;
+  }
+  state.phase = 'captain';
+  state.captainId = state.lineup[0].id; // preselected; the player can change it
+  renderCaptain();
+  showScreen('screenCaptain');
+}
+
+/* ---------------- captain pick ---------------- */
+
+function renderCaptain() {
+  const wrap = $('captainList');
+  wrap.innerHTML = '';
+  for (const c of state.lineup) {
+    const btn = document.createElement('button');
+    const selected = state.captainId === c.id;
+    btn.className = 'pick-row' + (selected ? ' selected' : '');
+    btn.innerHTML = avatarHtml(c, 'avatar-sm') +
+      `<span class="pick-name">${c.name}</span>` +
+      `<span class="pick-meta">#${c.position} · ${deltaLabel(c)}</span>` +
+      (selected ? '<span class="pick-tag">CAPTAIN ×2</span>' : '');
+    btn.addEventListener('click', () => { state.captainId = c.id; renderCaptain(); });
+    wrap.appendChild(btn);
+  }
+}
+
+function confirmCaptain() {
+  if (state.phase !== 'captain') return;
+  state.phase = 'call';
+  state.callPick = null;
+  renderCall();
+  showScreen('screenCall');
+}
+
+/* ---------------- call the climber ---------------- */
+
+function renderCall() {
+  const pending = state.call && !state.call.resolved ? state.call : null;
+  $('callNote').textContent = pending
+    ? `Pending Call: ${pending.name} (made ${fmtAsOf(pending.asOf)}). Pick another creator to replace it, or confirm to keep it.`
+    : 'Pick ONE creator from the whole board you think will climb most by the next hourly update. +100 if they climb, +200 if they are the biggest climber.';
+  const wrap = $('callList');
+  wrap.innerHTML = '';
+  const q = ($('callFilter').value || '').trim().toLowerCase();
+  const rows = state.creators.filter((c) => !q || c.name.toLowerCase().includes(q));
+  for (const c of rows) {
+    const selected = state.callPick === c.id || (!state.callPick && pending && pending.creatorId === c.id);
+    const btn = document.createElement('button');
+    btn.className = 'pick-row' + (selected ? ' selected' : '');
+    btn.innerHTML = avatarHtml(c, 'avatar-sm') +
+      `<span class="pick-name">${c.name}</span>` +
+      `<span class="pick-meta">#${c.position} · ${deltaLabel(c)}</span>` +
+      (selected ? '<span class="pick-tag">YOUR CALL</span>' : '');
+    btn.addEventListener('click', () => { state.callPick = c.id; renderCall(); });
+    wrap.appendChild(btn);
+  }
+  $('callConfirm').disabled = !state.callPick && !pending;
+}
+
+function confirmCall() {
+  if (state.phase !== 'call') return;
+  if (state.callPick) {
+    const c = state.creators.find((x) => x.id === state.callPick);
+    if (c) {
+      state.call = {
+        creatorId: c.id, name: c.name, positionAtCall: c.position,
+        asOf: state.asOf, resolved: false, pts: 0, note: '',
+      };
+      saveCall(state.call);
+    }
+  }
+  // No new pick: an existing pending Call stays as it is.
+  doScore();
+}
+
+/* ---------------- scoring v2 ---------------- */
+
+function doScore() {
   state.phase = 'scoring';
+  const snaps = loadSnaps();
   const scored = state.lineup.map((c) => {
-    const movePts = (c.delta || 0) * 10;
-    const pts = movePts + rankBonus(c.position);
-    return { creator: c, movePts, rankPts: rankBonus(c.position), pts, bonus: 0 };
+    const momentum = momentumFor(c, snaps);
+    const movePts = momentum * 10;
+    const rankPts = rankBonus(c.position);
+    const base = movePts + rankPts;
+    const isCaptain = c.id === state.captainId;
+    return { creator: c, momentum, movePts, rankPts, base, isCaptain, pts: isCaptain ? base * 2 : base, bonus: 0 };
   });
-  // Biggest climber in the lineup earns a +50 bonus.
+  // Biggest momentum climber in the lineup earns a +50 bonus.
   let bestClimber = null;
   for (const s of scored) {
-    if ((s.creator.delta || 0) > 0 && (!bestClimber || s.creator.delta > bestClimber.creator.delta)) bestClimber = s;
+    if (s.momentum > 0 && (!bestClimber || s.momentum > bestClimber.momentum)) bestClimber = s;
   }
   if (bestClimber) bestClimber.bonus = 50;
   const total = scored.reduce((sum, s) => sum + s.pts + s.bonus, 0);
-  state.score = { rows: scored, total };
+  state.score = { rows: scored, total, momentumCount: snaps.length, momentumFrom: snaps.length >= 2 ? oldestSnap(snaps).asOf : null };
 
   // Best score persists in localStorage.
   const prev = loadBest();
@@ -277,6 +477,13 @@ function endSeason() {
   } else {
     state.best = prev;
   }
+
+  // Season history: last 5 seasons, newest first.
+  const captain = state.lineup.find((c) => c.id === state.captainId);
+  state.seasons = saveSeason({
+    score: total, date: new Date().toISOString(),
+    names: state.lineup.map((c) => c.name), captain: captain ? captain.name : null,
+  });
 
   renderScoring();
   showScreen('screenScoring');
@@ -301,15 +508,46 @@ function renderScoring() {
   for (const s of rows) {
     const c = s.creator;
     const tr = document.createElement('tr');
-    const moveTxt = c.isNew ? 'new' : (c.delta > 0 ? `+${c.delta}` : `${c.delta || 0}`);
+    const moveTxt = c.isNew ? 'new' : (s.momentum > 0 ? `+${s.momentum}` : `${s.momentum}`);
     const pts = s.pts + s.bonus;
-    tr.innerHTML = `<td><span class="cell-creator">${avatarHtml(c, 'avatar-sm')}${c.name}${s.bonus ? ' ⭐' : ''}</span></td><td>#${c.position}</td>` +
-      `<td class="${(c.delta || 0) > 0 ? 'pos' : (c.delta || 0) < 0 ? 'neg' : ''}">${moveTxt}</td>` +
-      `<td class="${pts > 0 ? 'pos' : pts < 0 ? 'neg' : ''}">${pts > 0 ? '+' : ''}${pts}</td>`;
+    tr.innerHTML = `<td><span class="cell-creator">${s.isCaptain ? '👑 ' : ''}${avatarHtml(c, 'avatar-sm')}${c.name}${s.bonus ? ' ⭐' : ''}</span></td><td>#${c.position}</td>` +
+      `<td class="${s.momentum > 0 ? 'pos' : s.momentum < 0 ? 'neg' : ''}">${moveTxt}</td>` +
+      `<td class="${pts > 0 ? 'pos' : pts < 0 ? 'neg' : ''}">${pts > 0 ? '+' : ''}${pts}${s.isCaptain ? ' ×2' : ''}</td>`;
     tbody.appendChild(tr);
   }
   $('scoreTotal').textContent = (total > 0 ? '+' : '') + total;
-  $('scoringNote').textContent = `Scored on the leaderboard snapshot from ${fmtAsOf(state.asOf)} (${state.live ? 'live' : 'bundled snapshot'}).`;
+  const mc = state.score.momentumCount;
+  $('scoringNote').textContent = mc >= 2
+    ? `Scored on momentum across ${mc} snapshots (${fmtAsOf(state.score.momentumFrom)} → ${fmtAsOf(state.asOf)}), ${state.live ? 'live data' : 'bundled snapshot'}.`
+    : `Scored on the latest moves (${fmtAsOf(state.asOf)}, ${state.live ? 'live data' : 'bundled snapshot'}) — no momentum window yet. Play again after a newer snapshot and the game scores on movement across snapshots.`;
+
+  // The Call: resolved this visit, pending, or just locked in.
+  const callBlock = $('callBlock');
+  if (state.callResolvedThisBoot) {
+    const cb = state.callResolvedThisBoot;
+    callBlock.innerHTML = `<b>Your Call resolved: ${cb.note}</b><br>Call bank: ${fmt(state.callBank)} pts from resolved Calls.`;
+  } else if (state.call && !state.call.resolved) {
+    const madeThisSeason = state.call.asOf === state.asOf;
+    callBlock.innerHTML = `<b>Your Call: ${state.call.name}</b> — ` +
+      (madeThisSeason
+        ? 'locked in this season. It resolves against the NEXT hourly snapshot, not this one — check back after the next update.'
+        : `pending the next hourly update (made ${fmtAsOf(state.call.asOf)}). Check back after a newer snapshot.`);
+  } else {
+    callBlock.innerHTML = 'No Call this season.';
+  }
+
+  // Season history: last 5 seasons, newest first.
+  const hist = $('seasonHistory');
+  if (state.seasons.length) {
+    hist.innerHTML = '<h3>Past seasons</h3><ul>' + state.seasons.map((s) => {
+      const d = new Date(s.date).toUTCString().slice(5, 16);
+      const names = s.names.length ? s.names.join(', ') : 'empty lineup';
+      return `<li><b>${s.score > 0 ? '+' : ''}${s.score}</b> · ${d} · ${names}${s.captain ? ` · Captain: ${s.captain}` : ''}</li>`;
+    }).join('') + '</ul>';
+  } else {
+    hist.innerHTML = '';
+  }
+
   const isNewBest = state.best && state.best.score === total && total > 0;
   $('bestLine').textContent = isNewBest
     ? `🏆 New best score: ${fmt(total)}!`
@@ -331,7 +569,7 @@ function share() {
 /* ---------------- rendering ---------------- */
 
 function showScreen(id) {
-  for (const s of ['screenLoading', 'screenAuction', 'screenScoring']) $(s).classList.add('hidden');
+  for (const s of ['screenLoading', 'screenAuction', 'screenCaptain', 'screenCall', 'screenScoring']) $(s).classList.add('hidden');
   $(id).classList.remove('hidden');
 }
 
@@ -412,10 +650,26 @@ function renderLineup() {
 
 async function boot() {
   state.best = loadBest();
+  state.call = loadCall();
+  state.callBank = loadCallBank();
+  state.seasons = loadSeasons();
   const data = await loadData();
   state.creators = data.rows.slice().sort((a, b) => a.position - b.position);
   state.asOf = data.asOf;
   state.live = data.live;
+  // Remember this snapshot for the momentum window.
+  storeSnapshot(state.creators, state.asOf);
+  // Resolve any pending Call against this newer snapshot (never against
+  // the snapshot it was made from — resolveCall enforces that).
+  if (state.call && !state.call.resolved && state.asOf) {
+    const res = resolveCall(state.call, state.creators, state.asOf);
+    if (res) {
+      state.call = { ...state.call, resolved: true, pts: res.pts, note: res.note, resolvedAsOf: state.asOf };
+      saveCall(state.call);
+      state.callBank = addCallBank(res.pts);
+      state.callResolvedThisBoot = state.call;
+    }
+  }
   const badge = $('dataBadge');
   badge.textContent = (data.live ? '● Live data' : '● Snapshot data') + ' · leaderboard as of ' + fmtAsOf(data.asOf);
   badge.classList.add(data.live ? 'live' : 'snapshot');
@@ -428,6 +682,9 @@ $('bid50').addEventListener('click', () => playerBid(50));
 $('skipBtn').addEventListener('click', skipLot);
 $('shareBtn').addEventListener('click', share);
 $('againBtn').addEventListener('click', newSeason);
+$('captainConfirm').addEventListener('click', confirmCaptain);
+$('callConfirm').addEventListener('click', confirmCall);
+$('callFilter').addEventListener('input', () => { if (state.phase === 'call') renderCall(); });
 
 boot();
 
@@ -445,5 +702,29 @@ window.__game = {
     state.currentBid = state.startPrice;
     state.leader = 'you';
     resolveLot();
+  },
+  // Captain / Call flow, same handlers the buttons use.
+  pickCaptain: (id) => { if (state.phase === 'captain') { state.captainId = id; renderCaptain(); } },
+  confirmCaptain,
+  pickCall: (id) => { if (state.phase === 'call') { state.callPick = id; renderCall(); } },
+  confirmCall,
+  // Test-only: run the production Call-resolution path against supplied
+  // snapshot rows. Returns {resolved:false} when the snapshot is not newer
+  // than the Call's own snapshot. Persists the result like a real boot.
+  resolveCallForTest: (rows, asOf) => {
+    const call = loadCall();
+    if (!call) return null;
+    const res = resolveCall(call, rows, asOf);
+    if (!res) return { resolved: false };
+    const updated = { ...call, resolved: true, pts: res.pts, note: res.note, resolvedAsOf: asOf };
+    saveCall(updated);
+    state.call = updated;
+    state.callBank = addCallBank(res.pts);
+    return { resolved: true, pts: res.pts, note: res.note };
+  },
+  callState: () => ({ call: loadCall(), bank: loadCallBank(), seasons: loadSeasons(), snaps: loadSnaps() }),
+  momentumFor: (id) => {
+    const c = state.creators.find((x) => x.id === id);
+    return c ? momentumFor(c, loadSnaps()) : null;
   },
 };

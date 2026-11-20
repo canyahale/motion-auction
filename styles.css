@@ -141,6 +141,37 @@ h1 span { color: var(--pink); }
 }
 .log li b { color: var(--text); }
 
+/* ---------- captain / call picks ---------- */
+.pick-list { display: grid; gap: 8px; margin-bottom: 14px; }
+.pick-list.scroll { max-height: 320px; overflow-y: auto; padding-right: 2px; }
+.pick-row {
+  display: flex; align-items: center; gap: 8px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+  width: 100%; text-align: left; color: var(--text); font-size: 14px; cursor: pointer;
+}
+.pick-row.selected { border-color: var(--pink); background: #2a1120; }
+.pick-name { font-weight: 800; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.pick-tag { font-size: 11px; font-weight: 800; color: var(--gold); flex-shrink: 0; }
+.filter-input {
+  width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); padding: 10px 12px; font-size: 15px; margin-bottom: 10px;
+}
+.call-block {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px; font-size: 13px; line-height: 1.5; margin-bottom: 12px; text-align: center; color: var(--muted);
+}
+.call-block b { color: var(--gold); }
+.history { margin-bottom: 12px; }
+.history h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 6px; }
+.history ul { list-style: none; }
+.history li {
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; margin-bottom: 6px; color: var(--muted); line-height: 1.4;
+}
+.history li b { color: var(--text); }
+.share-btn:disabled { background: #3a3a52; color: var(--muted); cursor: not-allowed; }
+
 /* ---------- scoring ---------- */
 .screen-title { font-size: 24px; font-weight: 900; text-align: center; margin: 8px 0; }
 .muted { color: var(--muted); font-size: 13px; text-align: center; margin: 6px 0 14px; }
